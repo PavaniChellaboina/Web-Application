@@ -1,63 +1,118 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>student detail</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 10px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-    </style>
-</head>
-<body>
+// Simple frontend "auth" demo: register + login using hashed password in localStorage.
+// Uses Web Crypto API to hash the password (SHA-256). Educational only.
 
-    <h1>Student Details</h1>
+const $ = id => document.getElementById(id);
 
-    <table>
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Age</th>
-                <th>Grade</th>
-                <th>Subjects</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>Alice Johnson</td>
-                <td>16</td>
-                <td>10th</td>
-                <td>Math, Physics, Chemistry</td>
-            </tr>
-            <tr>
-                <td>Bob Williams</td>
-                <td>17</td>
-                <td>11th</td>
-                <td>History, Literature, Art</td>
-            </tr>
-            <tr>
-                <td>Charlie Brown</td>
-                <td>16</td>
-                <td>10th</td>
-                <td>Biology, Chemistry, English</td>
-            </tr>
-        </tbody>
-    </table>
+const showLoginBtn = $('show-login');
+const showRegBtn = $('show-register');
+const loginForm = $('login-form');
+const regForm = $('register-form');
+const loginMsg = $('login-msg');
+const regMsg = $('reg-msg');
+const rememberMe = $('remember-me');
 
-</body>
-</html>
+showLoginBtn.addEventListener('click', () => toggleForms('login'));
+showRegBtn.addEventListener('click', () => toggleForms('register'));
+
+function toggleForms(which){
+  if(which === 'login'){
+    showLoginBtn.classList.add('active');
+    showRegBtn.classList.remove('active');
+    loginForm.classList.add('active');
+    regForm.classList.remove('active');
+  } else {
+    showLoginBtn.classList.remove('active');
+    showRegBtn.classList.add('active');
+    loginForm.classList.remove('active');
+    regForm.classList.add('active');
+  }
+}
+
+// Show / hide password buttons
+document.querySelectorAll('.show-pass').forEach(btn=>{
+  btn.addEventListener('click', () => {
+    const tgt = document.getElementById(btn.dataset.target);
+    if(tgt.type === 'password'){ tgt.type = 'text'; btn.textContent = 'Hide'; }
+    else { tgt.type = 'password'; btn.textContent = 'Show'; }
+  });
+});
+
+// Helper: SHA-256 hash a string and return hex
+async function sha256Hex(str){
+  const enc = new TextEncoder().encode(str);
+  const hash = await crypto.subtle.digest('SHA-256', enc);
+  const bytes = new Uint8Array(hash);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// Storage keys
+const USER_KEY = 'eco_demo_user'; // stores JSON {name,email,hash}
+
+// Register
+regForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  regMsg.textContent = '';
+  const name = $('reg-name').value.trim();
+  const email = $('reg-email').value.trim().toLowerCase();
+  const pwd = $('reg-password').value;
+  const conf = $('reg-confirm').value;
+
+  if(pwd.length < 6){ regMsg.textContent = 'Password must be at least 6 characters.'; return; }
+  if(pwd !== conf){ regMsg.textContent = 'Passwords do not match.'; return; }
+
+  const hash = await sha256Hex(pwd);
+
+  // In a real app you'd send to server. Here we store one user for demo.
+  const user = { name, email, hash, created: new Date().toISOString() };
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  regMsg.textContent = 'Account created! Switch to Login.';
+  regMsg.style.color = 'green';
+  regForm.reset();
+  toggleForms('login');
+});
+
+// Login
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  loginMsg.textContent = '';
+
+  const email = $('login-email').value.trim().toLowerCase();
+  const pwd = $('login-password').value;
+  const stored = localStorage.getItem(USER_KEY);
+  if(!stored){ loginMsg.textContent = 'No account found. Please register.'; loginMsg.style.color = 'red'; return; }
+
+  const user = JSON.parse(stored);
+  if(user.email !== email){ loginMsg.textContent = 'Email not found.'; loginMsg.style.color = 'red'; return; }
+
+  const hash = await sha256Hex(pwd);
+  if(hash !== user.hash){ loginMsg.textContent = 'Incorrect password.'; loginMsg.style.color = 'red'; return; }
+
+  loginMsg.style.color = 'green';
+  loginMsg.textContent = `Welcome back, ${user.name || 'user'}!`;
+
+  // If remember me, set a "session" marker
+  if(rememberMe.checked){
+    localStorage.setItem('eco_demo_session', JSON.stringify({email:user.email,ts:Date.now()}));
+  } else {
+    sessionStorage.setItem('eco_demo_session', JSON.stringify({email:user.email,ts:Date.now()}));
+  }
+
+  // Simulate redirect to dashboard (for demo just show success)
+  setTimeout(()=> {
+    alert(`Logged in as ${user.name}. For a real app, redirect to your dashboard.`);
+    loginForm.reset();
+    loginMsg.textContent = '';
+  }, 700);
+});
+
+// If a session exists, show a quick message on load
+window.addEventListener('load', () => {
+  const s = localStorage.getItem('eco_demo_session') || sessionStorage.getItem('eco_demo_session');
+  if(s){
+    try{
+      const sess = JSON.parse(s);
+      loginMsg.style.color = 'green';
+      loginMsg.textContent = `Session detected (${sess.email}). You are already logged in for demo.`;
+    }catch(e){}
+  }
+});
